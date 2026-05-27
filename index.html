@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>BrightSmile — Dental Clinic Manager</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">BS</div>
+      <div>
+        <div class="brand-name">BrightSmile</div>
+        <div class="brand-tier">Dental · Paper Mode</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span>Dashboard</span>
+      </div>
+      <div class="nav-item" data-view="patients">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>
+        <span>Patients</span>
+      </div>
+      <div class="nav-item" data-view="appointments">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        <span>Appointments</span>
+      </div>
+      <div class="nav-item" data-view="treatments">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 0-4 4c0 1.5.5 2.5 1.5 3.5 1 1 1.5 2 1.5 4.5v6c0 1 .5 2 1 2s1-1 1-2v-4c0-1 .5-1 1-1s1 0 1 1v4c0 1 .5 2 1 2s1-1 1-2v-6c0-2.5.5-3.5 1.5-4.5C17.5 8.5 18 7.5 18 6a4 4 0 0 0-6-4z"/></svg>
+        <span>Treatments</span>
+      </div>
+      <div class="nav-item" data-view="inventory">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.27 6.96 8.73 5.05 8.73-5.05M12 22.08V12"/></svg>
+        <span>Inventory</span>
+        <span class="badge-mini" id="navLowStock" hidden>0</span>
+      </div>
+      <div class="nav-item" data-view="reports">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        <span>Reports</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-status" id="stockHealth">
+      <div class="label">
+        <span>Stock Health</span>
+        <span id="stockHealthPct">100%</span>
+      </div>
+      <div class="bar"><span id="stockHealthBar" style="width:100%"></span></div>
+      <div class="meta">
+        <span id="stockHealthMeta">All items healthy</span>
+        <span id="stockHealthSku">0 SKUs</span>
+      </div>
+    </div>
+
+    <button class="sidebar-cta" id="quickBookBtn">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <span>Book Appointment</span>
+    </button>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="page-title" id="pageTitle">Dashboard</div>
+      <div class="topbar-spacer"></div>
+      <div class="search">
+        <span class="search-ico"></span>
+        <input id="globalSearch" placeholder="Search patients, treatments, items…" />
+      </div>
+      <button class="icon-btn" id="alertsBtn" title="Low-stock alerts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        <span class="count-pill" id="alertCount" data-zero="true">0</span>
+      </button>
+      <div class="avatar">DR</div>
+    </div>
+
+    <div id="view-root"></div>
+  </main>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalRoot" hidden>
+  <div class="modal" id="modalEl" role="dialog">
+    <button class="modal-close" data-close>×</button>
+    <h2 id="modalTitle">Title</h2>
+    <div class="modal-sub" id="modalSub" hidden></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-host" id="toastHost"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
