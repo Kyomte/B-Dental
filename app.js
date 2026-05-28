@@ -1,12 +1,12 @@
 /* =========================================================
-   BrightSmile Clinic Manager — glass UI
+   B-Dental Clinic Manager — glass UI
    ========================================================= */
 
-const STORE_KEY = 'brightsmile.v2';
+const STORE_KEY = 'b-dental.v2';
 
 /* ---------- SEED ---------- */
 const SEED = {
-  clinic: { name: 'BrightSmile Dental Clinic', lowStockThresholdDefault: 10 },
+  clinic: { name: 'B-Dental Clinic', lowStockThresholdDefault: 10 },
   patients: [
     { id: 'p1', firstName: 'Maria',  lastName: 'Santos',     dob: '1991-04-12', phone: '+63 917 222 1010', email: 'maria.s@example.com',  sex: 'F', address: 'Quezon City',     allergies: 'Penicillin', medicalNotes: 'Hypertension, on Losartan', insurance: 'Maxicare',     createdAt: '2025-08-12' },
     { id: 'p2', firstName: 'Juan',   lastName: 'Dela Cruz',  dob: '1985-09-30', phone: '+63 928 311 4488', email: 'juan.dc@example.com',  sex: 'M', address: 'Pasig',           allergies: 'None',       medicalNotes: 'Smoker',                  insurance: 'Intellicare',  createdAt: '2025-09-02' },
