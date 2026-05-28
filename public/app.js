@@ -52,8 +52,20 @@ const SEED = {
   restockLog: [],
 };
 
+/* ---------- MODE ---------- */
+// Demo: data lives only in this browser (localStorage), seeded with samples.
+// Real: data lives in Postgres behind /api, gated by login. Set at build time.
+const CONFIG = window.BDENTAL_CONFIG || { demo: true };
+const DEMO = !!CONFIG.demo;
+
+const emptyState = () => ({
+  clinic: { name: 'B-Dental Clinic', lowStockThresholdDefault: 10 },
+  patients: [], treatments: [], appointments: [], inventory: [], restockLog: [],
+});
+
 /* ---------- STATE ---------- */
-let state = load();
+let state = DEMO ? loadLocal() : emptyState();
+let session = null; // { id, email, name } once logged in (real mode)
 let currentView = 'dashboard';
 let viewState = {
   patientSearch: '', patientFilter: 'all',
@@ -63,21 +75,54 @@ let viewState = {
   treatmentSearch: '',
 };
 
-function load() {
+function loadLocal() {
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
   return structuredClone(SEED);
 }
-function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function saveLocal() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch {} }
 function uid(p='x') { return p + '_' + Math.random().toString(36).slice(2, 9); }
+
+/* ---------- API + PERSISTENCE ----------
+   The in-memory `state` stays the single source the views render from.
+   Mutations update it optimistically, then persist: demo writes the whole
+   state to localStorage; real mode fires the matching granular REST call. */
+async function api(method, path, body) {
+  const res = await fetch('/api' + path, {
+    method,
+    credentials: 'same-origin',
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { session = null; showAuth('login'); throw new Error('unauthorized'); }
+  if (!res.ok) {
+    let msg = 'Request failed';
+    try { msg = (await res.json()).error || msg; } catch {}
+    throw new Error(msg);
+  }
+  return res.status === 204 ? null : res.json();
+}
+
+function persistError(err) {
+  if (err && err.message === 'unauthorized') return;
+  toast('Could not save to server: ' + (err?.message || 'unknown error'), 'danger');
+}
+
+const persist = {
+  create:  (resource, obj)     => DEMO ? saveLocal() : api('POST',   '/' + resource, obj).catch(persistError),
+  update:  (resource, id, obj) => DEMO ? saveLocal() : api('PUT',    '/' + resource + '/' + id, obj).catch(persistError),
+  remove:  (resource, id)      => DEMO ? saveLocal() : api('DELETE', '/' + resource + '/' + id).catch(persistError),
+  restock: (payload)           => DEMO ? saveLocal() : api('POST',   '/restock', payload).catch(persistError),
+};
 
 /* ---------- HELPERS ---------- */
 const PHP = n => '₱' + (n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 });
 const initials = (a='', b='') => (a[0]||'').toUpperCase() + (b[0]||'').toUpperCase();
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }) : '';
-const today = () => '2026-05-28';
+// Demo uses a fixed date so the sample schedule stays coherent; real mode uses now.
+const today = () => DEMO ? '2026-05-28' : new Date().toISOString().slice(0, 10);
 const ageFrom = dob => {
   if (!dob) return '—';
   const d = new Date(dob), t = new Date(today());
@@ -246,7 +291,7 @@ function renderDashboard() {
             <span class="pulse"></span>
             <span>${low.length ? 'Action needed' : 'All systems healthy'}</span>
           </div>
-          <h1>Welcome back, Dr. Reyes.</h1>
+          <h1>Welcome back${DEMO ? ', Dr. Reyes' : (state.clinic?.name ? ', ' + escape(state.clinic.name) : '')}.</h1>
           <div class="lede">You have <b>${todays.length}</b> appointment${todays.length===1?'':'s'} today and <b>${low.length}</b> inventory item${low.length===1?'':'s'} that need attention.</div>
           <div class="hero-buttons">
             <button class="btn btn-dark" data-action="new-appointment">+ Book Appointment</button>
@@ -897,17 +942,20 @@ function openPatientModal(id) {
   document.getElementById('patientForm').addEventListener('submit', e => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
-    if (id) { Object.assign(p, data); toast('Patient updated'); }
-    else { state.patients.push({ id: uid('p'), createdAt: today(), ...data }); toast('Patient created'); }
-    save(); closeModal(); render();
+    if (id) { Object.assign(p, data); persist.update('patients', id, p); toast('Patient updated'); }
+    else {
+      const np = { id: uid('p'), createdAt: today(), ...data };
+      state.patients.push(np); persist.create('patients', np); toast('Patient created');
+    }
+    closeModal(); render();
   });
   const del = document.getElementById('deletePatient');
   if (del) del.addEventListener('click', () => {
     if (!confirm('Delete this patient and all their appointments?')) return;
     state.patients = state.patients.filter(x => x.id !== id);
-    state.appointments = state.appointments.filter(a => a.patientId !== id);
+    state.appointments = state.appointments.filter(a => a.patientId !== id); // server cascades
     if (viewState.patientDetailId === id) viewState.patientDetailId = null;
-    save(); closeModal(); render(); toast('Patient deleted', 'danger');
+    persist.remove('patients', id); closeModal(); render(); toast('Patient deleted', 'danger');
   });
 }
 
@@ -940,14 +988,17 @@ function openAppointmentModal(id, presetPatientId) {
   document.getElementById('apptForm').addEventListener('submit', e => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
-    if (id) { Object.assign(a, data); toast('Appointment updated'); }
-    else { state.appointments.push({ id: uid('a'), ...data }); toast('Appointment booked'); }
-    save(); closeModal(); render();
+    if (id) { Object.assign(a, data); persist.update('appointments', id, a); toast('Appointment updated'); }
+    else {
+      const na = { id: uid('a'), ...data };
+      state.appointments.push(na); persist.create('appointments', na); toast('Appointment booked');
+    }
+    closeModal(); render();
   });
   const del = document.getElementById('deleteAppt');
   if (del) del.addEventListener('click', () => {
     state.appointments = state.appointments.filter(x => x.id !== id);
-    save(); closeModal(); render(); toast('Appointment deleted', 'danger');
+    persist.remove('appointments', id); closeModal(); render(); toast('Appointment deleted', 'danger');
   });
 }
 
@@ -955,7 +1006,7 @@ function completeAppointment(id) {
   const a = state.appointments.find(x => x.id === id);
   if (!a) return;
   a.status = 'completed';
-  save(); render(); toast('Appointment marked complete');
+  persist.update('appointments', id, a); render(); toast('Appointment marked complete');
 }
 
 function openTreatmentModal(id) {
@@ -979,15 +1030,18 @@ function openTreatmentModal(id) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
     data.price = +data.price; data.duration = +data.duration;
-    if (id) Object.assign(t, data);
-    else state.treatments.push({ id: uid('t'), ...data });
-    save(); closeModal(); render(); toast(id?'Treatment updated':'Treatment created');
+    if (id) { Object.assign(t, data); persist.update('treatments', id, t); }
+    else {
+      const nt = { id: uid('t'), ...data };
+      state.treatments.push(nt); persist.create('treatments', nt);
+    }
+    closeModal(); render(); toast(id?'Treatment updated':'Treatment created');
   });
 }
 function deleteTreatment(id) {
   if (!confirm('Delete this treatment?')) return;
   state.treatments = state.treatments.filter(t => t.id !== id);
-  save(); render(); toast('Treatment deleted', 'danger');
+  persist.remove('treatments', id); render(); toast('Treatment deleted', 'danger');
 }
 
 function openInventoryModal(id) {
@@ -1016,9 +1070,12 @@ function openInventoryModal(id) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
     data.qty = +data.qty; data.threshold = +data.threshold; data.price = +data.price;
-    if (id) Object.assign(i, data);
-    else state.inventory.push({ id: uid('i'), lastRestock: today(), ...data });
-    save(); closeModal(); render();
+    if (id) { Object.assign(i, data); persist.update('inventory', id, i); }
+    else {
+      const ni = { id: uid('i'), lastRestock: today(), ...data };
+      state.inventory.push(ni); persist.create('inventory', ni);
+    }
+    closeModal(); render();
     toast(id?'Item updated':'Item added');
     const low = lowStockItems();
     if (low.length > 0) toast(`${low.length} item${low.length>1?'s':''} below reorder threshold`, 'warn');
@@ -1026,7 +1083,7 @@ function openInventoryModal(id) {
   const del = document.getElementById('deleteItem');
   if (del) del.addEventListener('click', () => {
     state.inventory = state.inventory.filter(x => x.id !== id);
-    save(); closeModal(); render(); toast('Item deleted', 'danger');
+    persist.remove('inventory', id); closeModal(); render(); toast('Item deleted', 'danger');
   });
 }
 
@@ -1051,7 +1108,8 @@ function openRestockModal(id) {
     i.qty += addQty;
     i.lastRestock = data.date;
     state.restockLog.push({ id: uid('r'), itemId: i.id, qty: addQty, date: data.date, cost: addQty * (+data.cost) });
-    save(); closeModal(); render();
+    persist.restock({ itemId: i.id, qty: addQty, cost: +data.cost, date: data.date });
+    closeModal(); render();
     toast(`Restocked ${addQty} ${i.unit}${addQty===1?'':'s'} of ${i.name}`);
   });
 }
@@ -1069,5 +1127,123 @@ function exportInventoryCSV() {
   toast('Inventory exported');
 }
 
+/* =========================================================
+   AUTH (real mode only)
+   ========================================================= */
+function showAuth(mode = 'login') {
+  document.querySelector('.shell').style.display = 'none';
+  const root = document.getElementById('authRoot');
+  root.hidden = false;
+  renderAuth(mode);
+}
+function hideAuth() {
+  document.getElementById('authRoot').hidden = true;
+  document.querySelector('.shell').style.display = '';
+}
+
+function renderAuth(mode) {
+  const isRegister = mode === 'register';
+  const root = document.getElementById('authRoot');
+  root.innerHTML = `
+    <div class="auth-card">
+      <div class="auth-brand"><div class="auth-mark">BD</div><div class="auth-title">B-Dental</div></div>
+      <div class="auth-head">${isRegister ? 'Create your clinic' : 'Welcome back'}</div>
+      <div class="auth-sub">${isRegister ? 'Set up a new clinic account.' : 'Sign in to your clinic account.'}</div>
+      <form id="authForm" class="auth-form">
+        ${isRegister ? `<label class="auth-label">Clinic name<input class="auth-input" name="clinicName" placeholder="B-Dental Clinic"></label>` : ''}
+        <label class="auth-label">Email<input class="auth-input" type="email" name="email" required autocomplete="email"></label>
+        <label class="auth-label">Password<input class="auth-input" type="password" name="password" required minlength="8" autocomplete="${isRegister ? 'new-password' : 'current-password'}"></label>
+        <div class="auth-error" id="authError" hidden></div>
+        <button type="submit" class="btn btn-dark auth-submit">${isRegister ? 'Create account' : 'Sign in'}</button>
+      </form>
+      <div class="auth-switch">
+        ${isRegister
+          ? `Already have an account? <a href="#" data-auth-mode="login">Sign in</a>`
+          : `New clinic? <a href="#" data-auth-mode="register">Create an account</a>`}
+      </div>
+    </div>`;
+
+  root.querySelector('[data-auth-mode]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    renderAuth(e.target.dataset.authMode);
+  });
+
+  root.querySelector('#authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = document.getElementById('authError');
+    errEl.hidden = true;
+    const btn = e.target.querySelector('.auth-submit');
+    btn.disabled = true;
+    const body = Object.fromEntries(new FormData(e.target));
+    try {
+      const { clinic } = await api('POST', isRegister ? '/auth/register' : '/auth/login', body);
+      await afterLogin(clinic);
+    } catch (err) {
+      errEl.textContent = err?.message === 'unauthorized' ? 'Invalid email or password.' : (err?.message || 'Something went wrong.');
+      errEl.hidden = false;
+      btn.disabled = false;
+    }
+  });
+}
+
+async function afterLogin(clinic) {
+  session = clinic;
+  hideAuth();
+  try {
+    state = await api('GET', '/bootstrap');
+  } catch (err) {
+    persistError(err);
+    return;
+  }
+  decorateForSession();
+  setView('dashboard');
+}
+
+function decorateForSession() {
+  if (!session) return;
+  const name = state.clinic?.name || session.name || 'B-Dental';
+  document.querySelector('.brand-name').textContent = name;
+  document.querySelector('.brand-tier').textContent = session.email || 'Dental Manager';
+  const avatar = document.querySelector('.topbar .avatar');
+  avatar.textContent = (name.match(/\b\w/g) || ['B', 'D']).slice(0, 2).join('').toUpperCase();
+  avatar.title = 'Log out';
+  avatar.style.cursor = 'pointer';
+  avatar.onclick = async () => {
+    if (!confirm('Log out of B-Dental?')) return;
+    try { await api('POST', '/auth/logout'); } catch {}
+    session = null;
+    state = emptyState();
+    showAuth('login');
+  };
+}
+
+/* ---------- DEMO BANNER ---------- */
+function setupDemoBanner() {
+  const bar = document.createElement('div');
+  bar.className = 'demo-banner';
+  bar.innerHTML = `<span>Demo mode — data is saved only in this browser.</span><button id="demoReset">Reset demo data</button>`;
+  document.body.appendChild(bar);
+  document.getElementById('demoReset').addEventListener('click', () => {
+    if (!confirm('Reset all demo data back to the sample set?')) return;
+    try { localStorage.removeItem(STORE_KEY); } catch {}
+    location.reload();
+  });
+}
+
 /* ---------- INIT ---------- */
-render();
+(async function init() {
+  if (DEMO) {
+    setupDemoBanner();
+    render();
+    return;
+  }
+  // Real mode: hide the app until we know the session, to avoid a flash.
+  document.querySelector('.shell').style.display = 'none';
+  try {
+    const { clinic } = await api('GET', '/auth/me');
+    if (clinic) await afterLogin(clinic);
+    else showAuth('login');
+  } catch {
+    showAuth('login');
+  }
+})();
