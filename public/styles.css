@@ -999,6 +999,7 @@ a { color: inherit; text-decoration: none; }
     radial-gradient(900px 500px at 100% 110%, var(--pos-soft), transparent 55%),
     var(--paper-0);
 }
+.auth-overlay[hidden] { display: none; }
 .auth-card {
   width: 100%; max-width: 400px;
   background: var(--glass-strong);
