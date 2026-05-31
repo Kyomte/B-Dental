@@ -25,14 +25,21 @@ In the Vercel dashboard: **Storage → Create → Neon (Postgres)**. After it's 
   - Leave `BDENTAL_DEMO` unset (defaults to real mode).
 
 ### 3. Create the tables
-Run the schema once against your database:
+Run the schema against your database (idempotent — safe to re-run on schema upgrades):
 ```bash
 DATABASE_URL='postgres://...neon.tech/db?sslmode=require' npm run db:setup
 ```
-(Or paste `schema.sql` into Neon's SQL editor.)
 
-### 4. Deploy & create your account
-Trigger a deploy. Open the URL, click **Create an account**, and register your clinic. New accounts start with a standard treatment list and a baseline inventory; patients and appointments start empty.
+This applies `schema.sql` and then migrates any pre-existing clinic credentials into the new `users` table as the seed `admin` user. **Re-run this any time you pull a new version** — it's the project's stand-in for a migrations framework.
+
+### 4. Deploy & create your admin account
+Trigger a deploy. Open the URL — because there are no users yet, you'll see the **first-time setup form**. Enter your clinic name, your name, email, and password. That account becomes the one **admin** for the clinic.
+
+After that, the public setup form is gone for good — `/api/auth/register` returns 403 once any user exists. The only way to create more accounts is from inside the app: the admin opens **Accounts** in the sidebar and invites staff. Every staff account the admin creates has role `staff`.
+
+### 5. Role-based permissions
+- **Admin** (one per clinic, you): sees everything, including **Reports** and **Accounts**. Can create and delete staff. Cannot delete itself.
+- **Staff**: sees Dashboard, Patients, Appointments, Treatments, Inventory. **Reports** and **Accounts** are hidden client-side and blocked server-side (Reports is computed from data they already have, so the gate is UI-only; user-management endpoints are role-gated server-side).
 
 ---
 

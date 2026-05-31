@@ -139,7 +139,11 @@ const escape = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'
 const avatarAlt = id => 'alt-' + ((id.charCodeAt(id.length-1) % 4) + 1);
 
 /* ---------- ROUTING ---------- */
-function setView(v) {
+async function setView(v) {
+  // Hard gates for admin-only views. Belt-and-braces alongside hidden nav items.
+  if (!DEMO && (v === 'reports' || v === 'accounts') && session?.user?.role !== 'admin') {
+    v = 'dashboard';
+  }
   currentView = v;
   document.querySelectorAll('.nav-item[data-view]').forEach(el => {
     el.classList.toggle('active', el.dataset.view === v);
@@ -147,7 +151,13 @@ function setView(v) {
   document.getElementById('pageTitle').textContent = ({
     dashboard: 'Dashboard', patients: 'Patients', appointments: 'Appointments',
     treatments: 'Treatments', inventory: 'Inventory', reports: 'Reports',
+    accounts: 'Accounts',
   })[v] || '';
+  // Lazy-load the user list when the admin opens Accounts; pulls fresh each time.
+  if (v === 'accounts' && !DEMO) {
+    try { viewState.users = await api('GET', '/users'); }
+    catch (err) { viewState.users = []; persistError(err); }
+  }
   render();
 }
 document.getElementById('nav').addEventListener('click', e => {
@@ -254,6 +264,7 @@ function render() {
     case 'treatments':   root.innerHTML = renderTreatments(); break;
     case 'inventory':    root.innerHTML = renderInventory(); break;
     case 'reports':      root.innerHTML = renderReports(); break;
+    case 'accounts':     root.innerHTML = renderAccounts(); break;
   }
   bindEvents();
   refreshAlerts();
@@ -910,6 +921,13 @@ function bindEvents() {
   root.querySelectorAll('[data-ifilter]').forEach(el => el.addEventListener('click', () => { viewState.invFilter = el.dataset.ifilter; render(); }));
 
   root.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => { viewState.patientDetailTab = t.dataset.tab; render(); }));
+
+  // Accounts view: invite + delete handlers
+  const inviteForm = root.querySelector('#inviteForm');
+  if (inviteForm) inviteForm.addEventListener('submit', onInviteSubmit);
+  root.querySelectorAll('[data-delete-user]').forEach(el =>
+    el.addEventListener('click', () => onDeleteUser(el.dataset.deleteUser, el.dataset.deleteUserEmail))
+  );
 }
 
 /* =========================================================
@@ -1127,6 +1145,76 @@ function exportInventoryCSV() {
   toast('Inventory exported');
 }
 
+/* ====== ACCOUNTS (admin-only, real mode only) ====== */
+function renderAccounts() {
+  const users = viewState.users || [];
+  const meId = session?.user?.id;
+  return `
+    <section class="hero" style="padding:var(--space-7)">
+      <div class="eyebrow-chip"><span>Admin</span></div>
+      <h1>Team accounts</h1>
+      <div class="lede">Invite staff so they can log in to this clinic. Staff see patients, appointments, treatments, and inventory — Reports are admin-only.</div>
+    </section>
+
+    <div class="card" style="padding:var(--space-7); margin-top:var(--space-6)">
+      <div style="font-weight:700; font-size:16px; margin-bottom:var(--space-4)">Invite a staff member</div>
+      <form id="inviteForm" class="form-grid">
+        <div class="form-field"><label class="form-label">Name</label><input class="form-input" name="name" placeholder="Jane Hygienist"></div>
+        <div class="form-field"><label class="form-label">Email</label><input class="form-input" type="email" name="email" required autocomplete="off"></div>
+        <div class="form-field full"><label class="form-label">Temporary password (8+ chars)</label><input class="form-input" type="password" name="password" required minlength="8" autocomplete="new-password"></div>
+        <div class="form-save-row" style="grid-column:1/-1">
+          <button type="submit" class="btn btn-dark">Create staff account</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="card" style="padding:var(--space-6); margin-top:var(--space-6)">
+      <div style="font-weight:700; font-size:16px; margin-bottom:var(--space-4)">Active accounts (${users.length})</div>
+      ${users.length === 0
+        ? `<div class="empty">No accounts yet. Invite your first staff member above.</div>`
+        : `<div class="trade-list">${users.map(u => `
+            <div class="trade-row">
+              <div class="trade-icon ${u.role==='admin'?'pos':''}">${escape((u.name || u.email).slice(0,1).toUpperCase())}</div>
+              <div class="flex-1">
+                <div class="trade-name">${escape(u.name || '—')} ${u.id===meId ? '<span class="badge-mini">you</span>' : ''}</div>
+                <div class="trade-meta">${escape(u.email)} · <b>${escape(u.role)}</b></div>
+              </div>
+              ${u.role === 'admin' || u.id === meId
+                ? `<span class="trade-meta">${u.role === 'admin' ? 'admin' : ''}</span>`
+                : `<button class="btn btn-danger btn-sm" data-delete-user="${escape(u.id)}" data-delete-user-email="${escape(u.email)}">Remove</button>`}
+            </div>`).join('')}</div>`}
+    </div>
+  `;
+}
+
+async function onInviteSubmit(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  const btn = e.target.querySelector('button[type="submit"]');
+  btn.disabled = true;
+  try {
+    const created = await api('POST', '/users', data);
+    viewState.users = [...(viewState.users || []), created];
+    toast(`Invited ${created.email}`);
+    render();
+  } catch (err) {
+    toast(err?.message || 'Could not create account', 'danger');
+    btn.disabled = false;
+  }
+}
+
+async function onDeleteUser(id, email) {
+  if (!confirm(`Remove ${email}? They will be logged out immediately.`)) return;
+  try {
+    await api('DELETE', '/users/' + id);
+    viewState.users = (viewState.users || []).filter(u => u.id !== id);
+    toast(`Removed ${email}`, 'danger');
+    render();
+  } catch (err) {
+    toast(err?.message || 'Could not remove account', 'danger');
+  }
+}
+
 /* =========================================================
    AUTH (real mode only)
    ========================================================= */
@@ -1142,31 +1230,28 @@ function hideAuth() {
 }
 
 function renderAuth(mode) {
-  const isRegister = mode === 'register';
+  // mode: 'login' (default) or 'setup' (one-time admin account creation).
+  // There's no public registration — staff are created by the admin.
+  const isSetup = mode === 'setup';
   const root = document.getElementById('authRoot');
   root.innerHTML = `
     <div class="auth-card">
       <div class="auth-brand"><div class="auth-mark">BD</div><div class="auth-title">B-Dental</div></div>
-      <div class="auth-head">${isRegister ? 'Create your clinic' : 'Welcome back'}</div>
-      <div class="auth-sub">${isRegister ? 'Set up a new clinic account.' : 'Sign in to your clinic account.'}</div>
+      <div class="auth-head">${isSetup ? 'Set up your clinic' : 'Welcome back'}</div>
+      <div class="auth-sub">${isSetup
+        ? 'First-time setup — this becomes the admin account. After this you sign in here.'
+        : 'Sign in to your clinic account.'}</div>
       <form id="authForm" class="auth-form">
-        ${isRegister ? `<label class="auth-label">Clinic name<input class="auth-input" name="clinicName" placeholder="B-Dental Clinic"></label>` : ''}
+        ${isSetup ? `
+          <label class="auth-label">Clinic name<input class="auth-input" name="clinicName" placeholder="B-Dental Clinic"></label>
+          <label class="auth-label">Your name<input class="auth-input" name="name" placeholder="Dr. Reyes"></label>` : ''}
         <label class="auth-label">Email<input class="auth-input" type="email" name="email" required autocomplete="email"></label>
-        <label class="auth-label">Password<input class="auth-input" type="password" name="password" required minlength="8" autocomplete="${isRegister ? 'new-password' : 'current-password'}"></label>
+        <label class="auth-label">Password<input class="auth-input" type="password" name="password" required minlength="8" autocomplete="${isSetup ? 'new-password' : 'current-password'}"></label>
         <div class="auth-error" id="authError" hidden></div>
-        <button type="submit" class="btn btn-dark auth-submit">${isRegister ? 'Create account' : 'Sign in'}</button>
+        <button type="submit" class="btn btn-dark auth-submit">${isSetup ? 'Create admin account' : 'Sign in'}</button>
       </form>
-      <div class="auth-switch">
-        ${isRegister
-          ? `Already have an account? <a href="#" data-auth-mode="login">Sign in</a>`
-          : `New clinic? <a href="#" data-auth-mode="register">Create an account</a>`}
-      </div>
+      ${isSetup ? `<div class="auth-switch">After setup, new staff accounts can only be created from inside the app by the admin.</div>` : ''}
     </div>`;
-
-  root.querySelector('[data-auth-mode]')?.addEventListener('click', (e) => {
-    e.preventDefault();
-    renderAuth(e.target.dataset.authMode);
-  });
 
   root.querySelector('#authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1176,8 +1261,8 @@ function renderAuth(mode) {
     btn.disabled = true;
     const body = Object.fromEntries(new FormData(e.target));
     try {
-      const { clinic } = await api('POST', isRegister ? '/auth/register' : '/auth/login', body);
-      await afterLogin(clinic);
+      const resp = await api('POST', isSetup ? '/auth/register' : '/auth/login', body);
+      await afterLogin(resp.user, resp.clinic);
     } catch (err) {
       errEl.textContent = err?.message === 'unauthorized' ? 'Invalid email or password.' : (err?.message || 'Something went wrong.');
       errEl.hidden = false;
@@ -1186,8 +1271,8 @@ function renderAuth(mode) {
   });
 }
 
-async function afterLogin(clinic) {
-  session = clinic;
+async function afterLogin(user, clinic) {
+  session = { user, clinic };
   hideAuth();
   try {
     state = await api('GET', '/bootstrap');
@@ -1196,16 +1281,18 @@ async function afterLogin(clinic) {
     return;
   }
   decorateForSession();
+  applyRolePermissions();
   setView('dashboard');
 }
 
 function decorateForSession() {
   if (!session) return;
-  const name = state.clinic?.name || session.name || 'B-Dental';
-  document.querySelector('.brand-name').textContent = name;
-  document.querySelector('.brand-tier').textContent = session.email || 'Dental Manager';
+  const clinicName = state.clinic?.name || session.clinic?.name || 'B-Dental';
+  const userName = session.user?.name || session.user?.email || 'Account';
+  document.querySelector('.brand-name').textContent = clinicName;
+  document.querySelector('.brand-tier').textContent = `${userName} · ${session.user?.role || ''}`;
   const avatar = document.querySelector('.topbar .avatar');
-  avatar.textContent = (name.match(/\b\w/g) || ['B', 'D']).slice(0, 2).join('').toUpperCase();
+  avatar.textContent = (userName.match(/\b\w/g) || ['B', 'D']).slice(0, 2).join('').toUpperCase();
   avatar.title = 'Log out';
   avatar.style.cursor = 'pointer';
   avatar.onclick = async () => {
@@ -1215,6 +1302,16 @@ function decorateForSession() {
     state = emptyState();
     showAuth('login');
   };
+}
+
+// Show/hide nav items based on role. Reports and Accounts are admin-only;
+// Accounts is also hidden in demo mode (there are no real users to manage).
+function applyRolePermissions() {
+  const isAdmin = DEMO ? true : (session?.user?.role === 'admin');
+  const reports  = document.querySelector('.nav-item[data-view="reports"]');
+  const accounts = document.querySelector('.nav-item[data-view="accounts"]');
+  if (reports)  reports.style.display  = isAdmin ? '' : 'none';
+  if (accounts) accounts.style.display = (isAdmin && !DEMO) ? '' : 'none';
 }
 
 /* ---------- DEMO BANNER ---------- */
@@ -1234,15 +1331,16 @@ function setupDemoBanner() {
 (async function init() {
   if (DEMO) {
     setupDemoBanner();
+    applyRolePermissions();
     render();
     return;
   }
   // Real mode: hide the app until we know the session, to avoid a flash.
   document.querySelector('.shell').style.display = 'none';
   try {
-    const { clinic } = await api('GET', '/auth/me');
-    if (clinic) await afterLogin(clinic);
-    else showAuth('login');
+    const { user, clinic, firstSetup } = await api('GET', '/auth/me');
+    if (user && clinic) await afterLogin(user, clinic);
+    else showAuth(firstSetup ? 'setup' : 'login');
   } catch {
     showAuth('login');
   }

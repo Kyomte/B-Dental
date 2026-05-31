@@ -3,12 +3,25 @@
 
 create table if not exists clinics (
   id                          text primary key,
-  email                       text unique not null,
-  password_hash               text not null,
+  email                       text,            -- legacy: kept for compat; auth lives on users
+  password_hash               text,            -- legacy: kept for compat; auth lives on users
   name                        text not null default 'B-Dental Clinic',
   low_stock_threshold_default integer not null default 10,
   created_at                  timestamptz not null default now()
 );
+
+-- Users belong to a clinic. Role 'admin' is the owner (one per clinic);
+-- 'staff' is every account the admin creates afterward.
+create table if not exists users (
+  id            text primary key,
+  clinic_id     text not null references clinics(id) on delete cascade,
+  email         text unique not null,
+  password_hash text not null,
+  name          text not null default '',
+  role          text not null default 'staff' check (role in ('admin', 'staff')),
+  created_at    timestamptz not null default now()
+);
+create index if not exists idx_users_clinic on users(clinic_id);
 
 create table if not exists treatments (
   id        text primary key,

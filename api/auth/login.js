@@ -9,14 +9,23 @@ export default async function handler(req, res) {
   if (!normEmail || !password) return res.status(400).json({ error: 'Email and password are required.' });
 
   try {
-    const rows = await query('select id, email, name, password_hash from clinics where email = $1', [normEmail]);
-    const clinic = rows[0];
-    const ok = clinic && (await verifyPassword(String(password), clinic.password_hash));
+    const rows = await query(
+      `select u.id, u.email, u.name, u.role, u.password_hash,
+              c.id as clinic_id, c.name as clinic_name, c.low_stock_threshold_default
+         from users u join clinics c on c.id = u.clinic_id
+        where u.email = $1`,
+      [normEmail]
+    );
+    const u = rows[0];
+    const ok = u && (await verifyPassword(String(password), u.password_hash));
     if (!ok) return res.status(401).json({ error: 'Invalid email or password.' });
 
-    const token = await createToken(clinic.id);
+    const token = await createToken(u.id);
     setSessionCookie(res, token);
-    return res.status(200).json({ clinic: { id: clinic.id, email: clinic.email, name: clinic.name } });
+    return res.status(200).json({
+      user: { id: u.id, email: u.email, name: u.name, role: u.role },
+      clinic: { id: u.clinic_id, name: u.clinic_name, lowStockThresholdDefault: u.low_stock_threshold_default },
+    });
   } catch (err) {
     console.error('[login]', err);
     return res.status(500).json({ error: 'Login failed.' });

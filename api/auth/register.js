@@ -1,3 +1,6 @@
+// First-run setup ONLY. Creates the clinic + the single admin user.
+// Returns 403 once any user exists — after that, the admin uses /api/users
+// to add staff.
 import { query } from '../../lib/db.js';
 import { hashPassword, createToken, setSessionCookie, readJson } from '../../lib/auth.js';
 import { uid } from '../../lib/util.js';
@@ -6,23 +9,39 @@ import { SEED_TREATMENTS, SEED_INVENTORY } from '../../lib/seed.js';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
 
-  const { email, password, clinicName } = readJson(req);
+  try {
+    const existing = await query('select count(*)::int as n from users', []);
+    if (existing[0]?.n > 0) {
+      return res.status(403).json({ error: 'Registration is closed. Ask your admin to create an account for you.' });
+    }
+  } catch (err) {
+    console.error('[register:precheck]', err);
+    return res.status(500).json({ error: 'Could not create account.' });
+  }
+
+  const { email, password, clinicName, name } = readJson(req);
   const normEmail = String(email || '').trim().toLowerCase();
   if (!normEmail || !password || String(password).length < 8) {
     return res.status(400).json({ error: 'Email and a password of at least 8 characters are required.' });
   }
 
   try {
-    const existing = await query('select id from clinics where email = $1', [normEmail]);
-    if (existing.length) return res.status(409).json({ error: 'An account with that email already exists.' });
-
     const clinicId = uid('c');
+    const userId = uid('u');
     const hash = await hashPassword(String(password));
-    const name = String(clinicName || '').trim() || 'B-Dental Clinic';
+    const cName = String(clinicName || '').trim() || 'B-Dental Clinic';
+    const userName = String(name || '').trim() || 'Admin';
 
+    // Mirror creds onto clinics row to satisfy legacy NOT NULL constraints
+    // on older deploys; users table is the source of truth for auth.
     await query(
       'insert into clinics (id, email, password_hash, name) values ($1, $2, $3, $4)',
-      [clinicId, normEmail, hash, name]
+      [clinicId, normEmail, hash, cName]
+    );
+    await query(
+      `insert into users (id, clinic_id, email, password_hash, name, role)
+         values ($1, $2, $3, $4, $5, 'admin')`,
+      [userId, clinicId, normEmail, hash, userName]
     );
 
     for (const t of SEED_TREATMENTS) {
@@ -39,11 +58,15 @@ export default async function handler(req, res) {
       );
     }
 
-    const token = await createToken(clinicId);
+    const token = await createToken(userId);
     setSessionCookie(res, token);
-    return res.status(201).json({ clinic: { id: clinicId, email: normEmail, name } });
+    return res.status(201).json({
+      user: { id: userId, email: normEmail, name: userName, role: 'admin' },
+      clinic: { id: clinicId, name: cName, lowStockThresholdDefault: 10 },
+    });
   } catch (err) {
     console.error('[register]', err);
+    if (err?.code === '23505') return res.status(409).json({ error: 'That email is already taken.' });
     return res.status(500).json({ error: 'Could not create account.' });
   }
 }
