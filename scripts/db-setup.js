@@ -13,11 +13,17 @@ if (!url) {
 const sql = neon(url);
 const schema = readFileSync(new URL('../schema.sql', import.meta.url), 'utf8');
 
-// Split on statement boundaries; neon's HTTP driver runs one statement per call.
+// Strip line comments BEFORE splitting on ';' — comments themselves can
+// contain semicolons (e.g. "-- foo; bar") which otherwise split a real
+// statement in half and produce a fragment that starts with "auth lives..."
+// or similar nonsense.
 const statements = schema
+  .split('\n')
+  .map((line) => line.replace(/--.*$/, ''))
+  .join('\n')
   .split(';')
   .map((s) => s.trim())
-  .filter((s) => s && !s.startsWith('--'));
+  .filter(Boolean);
 
 const run = async () => {
   for (const stmt of statements) {
