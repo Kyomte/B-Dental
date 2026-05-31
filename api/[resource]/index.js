@@ -1,9 +1,14 @@
 import { query } from '../../lib/db.js';
 import { requireAuth, readJson } from '../../lib/auth.js';
-import { RESOURCES, rowToObj } from '../../lib/resources.js';
+import { RESOURCES, rowToObj, firstInvalidField } from '../../lib/resources.js';
 import { uid } from '../../lib/util.js';
 
 const PREFIX = { patients: 'p', treatments: 't', appointments: 'a', inventory: 'i' };
+
+// Matches the uid() shape (`<letter>_<alnum>`). Client-supplied ids are kept to
+// preserve optimistic updates, but only in this shape — arbitrary text would
+// become a stored-XSS sink where ids are interpolated into HTML attributes.
+const ID_RE = /^[a-z]_[a-z0-9]{6,20}$/i;
 
 export default async function handler(req, res) {
   const def = RESOURCES[req.query.resource];
@@ -23,7 +28,10 @@ export default async function handler(req, res) {
 
     if (req.method === 'POST') {
       const body = readJson(req);
-      const id = body.id || uid(PREFIX[req.query.resource] || 'x');
+      const bad = firstInvalidField(body, def);
+      if (bad) return res.status(400).json({ error: `invalid ${bad}` });
+      const supplied = typeof body.id === 'string' ? body.id : null;
+      const id = supplied && ID_RE.test(supplied) ? supplied : uid(PREFIX[req.query.resource] || 'x');
       const jsKeys = Object.keys(def.cols);
       const columns = ['id', 'clinic_id', ...jsKeys.map((k) => def.cols[k])];
       const values = [id, clinicId, ...jsKeys.map((k) => body[k] ?? null)];

@@ -38,11 +38,21 @@ export default async function handler(req, res) {
       'insert into clinics (id, email, password_hash, name) values ($1, $2, $3, $4)',
       [clinicId, normEmail, hash, cName]
     );
-    await query(
+    // Authoritative guard against a concurrent first-setup: the count(*) precheck
+    // above and this insert are separate round-trips, so two requests could both
+    // observe an empty users table. Gating the insert on `not exists` and checking
+    // the row count closes that window; clean up the orphan clinic row if we lose.
+    const inserted = await query(
       `insert into users (id, clinic_id, email, password_hash, name, role)
-         values ($1, $2, $3, $4, $5, 'admin')`,
+         select $1, $2, $3, $4, $5, 'admin'
+          where not exists (select 1 from users)
+       returning id`,
       [userId, clinicId, normEmail, hash, userName]
     );
+    if (!inserted.length) {
+      await query('delete from clinics where id = $1', [clinicId]);
+      return res.status(403).json({ error: 'Registration is closed. Ask your admin to create an account for you.' });
+    }
 
     for (const t of SEED_TREATMENTS) {
       await query(

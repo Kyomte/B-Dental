@@ -202,7 +202,7 @@ document.getElementById('alertsBtn').addEventListener('click', () => {
           <div class="trade-name">${escape(i.name)}</div>
           <div class="trade-meta">${escape(i.category)} · ${escape(i.supplier)} · threshold ${i.threshold}</div>
         </div>
-        <button class="btn btn-dark btn-sm" data-restock="${i.id}">Restock</button>
+        <button class="btn btn-dark btn-sm" data-restock="${escape(i.id)}">Restock</button>
       </div>
     `).join('')}
   `);
@@ -326,7 +326,7 @@ function renderDashboard() {
                 <div class="trade-icon buy">${initials(p?.firstName, p?.lastName)}</div>
                 <div>
                   <div class="trade-name">${escape(p?.firstName)} ${escape(p?.lastName)} · ${escape(t?.name)}</div>
-                  <div class="trade-meta">${fmtDate(a.date)} · ${a.time} · ${escape(a.notes || 'No notes')}</div>
+                  <div class="trade-meta">${fmtDate(a.date)} · ${escape(a.time)} · ${escape(a.notes || 'No notes')}</div>
                 </div>
                 <div>
                   <div class="trade-amt">${PHP(t?.price)}</div>
@@ -427,7 +427,7 @@ function renderPatients() {
           .sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time))[0];
         const hasAllergy = p.allergies && p.allergies !== 'None' && p.allergies !== '';
         return `
-          <div class="tile" data-open-patient="${p.id}">
+          <div class="tile" data-open-patient="${escape(p.id)}">
             <div class="tile-corner-tags">
               ${p.insurance && p.insurance !== '—' ? `<span class="tag tag-good">${escape(p.insurance)}</span>` : ''}
               ${hasAllergy ? `<span class="tag tag-bad">⚠ ${escape(p.allergies)}</span>` : ''}
@@ -445,8 +445,8 @@ function renderPatients() {
               <div class="tile-stat"><span class="k">Next</span><span class="v">${next ? fmtDate(next.date) : '—'}</span></div>
             </div>
             <div class="tile-foot">
-              <button class="btn btn-ghost btn-sm" data-open-patient="${p.id}">View Profile</button>
-              <button class="btn btn-dark btn-sm" data-book-for="${p.id}">Book</button>
+              <button class="btn btn-ghost btn-sm" data-open-patient="${escape(p.id)}">View Profile</button>
+              <button class="btn btn-dark btn-sm" data-book-for="${escape(p.id)}">Book</button>
             </div>
           </div>
         `;
@@ -493,8 +493,8 @@ function renderPatientDetail() {
           <div style="font-size:13px;color:var(--ink-1);font-weight:600">${escape(p.medicalNotes || '—')}</div>
         </div>
         <div class="row mt-22" style="gap:8px">
-          <button class="btn btn-ghost btn-sm flex-1" data-edit-patient="${p.id}">Edit</button>
-          <button class="btn btn-dark btn-sm flex-1" data-book-for="${p.id}">+ Book</button>
+          <button class="btn btn-ghost btn-sm flex-1" data-edit-patient="${escape(p.id)}">Edit</button>
+          <button class="btn btn-dark btn-sm flex-1" data-book-for="${escape(p.id)}">+ Book</button>
         </div>
       </aside>
 
@@ -538,7 +538,7 @@ function renderPatientOverview(recent) {
         <div class="trade-icon ${v.status==='completed'?'swap':v.status==='canceled'?'sell':'buy'}">${new Date(v.date).getDate()}</div>
         <div>
           <div class="trade-name">${escape(t?.name)}</div>
-          <div class="trade-meta">${fmtDate(v.date)} · ${v.time} · ${escape(v.notes || 'No notes')}</div>
+          <div class="trade-meta">${fmtDate(v.date)} · ${escape(v.time)} · ${escape(v.notes || 'No notes')}</div>
         </div>
         <div>
           <div class="trade-amt">${PHP(t?.price)}</div>
@@ -557,10 +557,10 @@ function renderPatientHistoryTable(visits) {
         ${visits.map(v => {
           const t = findTreatment(v.treatmentId);
           return `<tr>
-            <td><span class="mono">${fmtDate(v.date)}</span> <span class="muted">${v.time}</span></td>
+            <td><span class="mono">${fmtDate(v.date)}</span> <span class="muted">${escape(v.time)}</span></td>
             <td>${escape(t?.name)}</td>
             <td class="muted">${escape(v.notes || '—')}</td>
-            <td><span class="tag tag-${v.status==='completed'?'completed':v.status==='canceled'?'canceled':'scheduled'}">${v.status}</span></td>
+            <td><span class="tag tag-${v.status==='completed'?'completed':v.status==='canceled'?'canceled':'scheduled'}">${escape(v.status)}</span></td>
             <td class="mono">${PHP(t?.price)}</td>
           </tr>`;
         }).join('')}
@@ -621,7 +621,7 @@ function renderAppointments() {
               ${dayAppts.slice(0,3).map(a => {
                 const p = findPatient(a.patientId);
                 const cls = a.status === 'completed' ? 'done' : a.status === 'canceled' ? 'canceled' : (c.iso === today() ? 'warn' : '');
-                return `<div class="ap ${cls}" data-edit-appt="${a.id}" title="${a.time} ${escape(p?.firstName)} ${escape(p?.lastName)}">${a.time} ${escape(p?.firstName||'')}</div>`;
+                return `<div class="ap ${cls}" data-edit-appt="${escape(a.id)}" title="${escape(a.time)} ${escape(p?.firstName)} ${escape(p?.lastName)}">${escape(a.time)} ${escape(p?.firstName||'')}</div>`;
               }).join('')}
               ${dayAppts.length > 3 ? `<div class="more">+${dayAppts.length-3} more</div>` : ''}
             </div>
@@ -646,14 +646,14 @@ function renderAppointments() {
             const p = findPatient(a.patientId);
             const t = findTreatment(a.treatmentId);
             return `<tr>
-              <td><b>${fmtDate(a.date)}</b><br><span class="muted mono">${a.time}</span></td>
+              <td><b>${fmtDate(a.date)}</b><br><span class="muted mono">${escape(a.time)}</span></td>
               <td>${escape(p?.firstName)} ${escape(p?.lastName)}</td>
               <td>${escape(t?.name)}<div class="muted mono" style="font-size:11px">${PHP(t?.price)}</div></td>
               <td class="muted">${escape(a.notes || '—')}</td>
-              <td><span class="tag tag-${a.status==='completed'?'completed':a.status==='canceled'?'canceled':'scheduled'}">${a.status}</span></td>
+              <td><span class="tag tag-${a.status==='completed'?'completed':a.status==='canceled'?'canceled':'scheduled'}">${escape(a.status)}</span></td>
               <td class="nowrap">
-                ${a.status === 'scheduled' ? `<button class="btn btn-ghost btn-sm" data-complete-appt="${a.id}">✓ Complete</button>` : ''}
-                <button class="btn btn-ghost btn-sm" data-edit-appt="${a.id}">Edit</button>
+                ${a.status === 'scheduled' ? `<button class="btn btn-ghost btn-sm" data-complete-appt="${escape(a.id)}">✓ Complete</button>` : ''}
+                <button class="btn btn-ghost btn-sm" data-edit-appt="${escape(a.id)}">Edit</button>
               </td>
             </tr>`;
           }).join('')}
@@ -695,8 +695,8 @@ function renderTreatments() {
             </div>
             <div class="tile-key">${PHP(t.price)} <span class="unit">/ visit</span></div>
             <div class="tile-foot">
-              <button class="btn btn-ghost btn-sm" data-edit-treatment="${t.id}">Edit</button>
-              <button class="btn btn-danger btn-sm" data-delete-treatment="${t.id}">Delete</button>
+              <button class="btn btn-ghost btn-sm" data-edit-treatment="${escape(t.id)}">Edit</button>
+              <button class="btn btn-danger btn-sm" data-delete-treatment="${escape(t.id)}">Delete</button>
             </div>
           </div>
         `;
@@ -781,8 +781,8 @@ function renderInventory() {
               <div class="tile-stat"><span class="k">Restocked</span><span class="v">${fmtDate(i.lastRestock)}</span></div>
             </div>
             <div class="tile-foot">
-              <button class="btn btn-ghost btn-sm" data-edit-inventory="${i.id}">Edit</button>
-              <button class="btn btn-dark btn-sm" data-restock="${i.id}">+ Restock</button>
+              <button class="btn btn-ghost btn-sm" data-edit-inventory="${escape(i.id)}">Edit</button>
+              <button class="btn btn-dark btn-sm" data-restock="${escape(i.id)}">+ Restock</button>
             </div>
           </div>
         `;
@@ -983,10 +983,10 @@ function openAppointmentModal(id, presetPatientId) {
   openModal(id ? 'Edit Appointment' : 'Book Appointment', id ? 'Update scheduling details' : 'Schedule a new visit', `
     <form id="apptForm" class="form-grid">
       <div class="form-field full"><label class="form-label">Patient</label><select class="form-select" name="patientId" required>
-        ${state.patients.map(p => `<option value="${p.id}" ${p.id===a.patientId?'selected':''}>${escape(p.firstName)} ${escape(p.lastName)}</option>`).join('')}
+        ${state.patients.map(p => `<option value="${escape(p.id)}" ${p.id===a.patientId?'selected':''}>${escape(p.firstName)} ${escape(p.lastName)}</option>`).join('')}
       </select></div>
       <div class="form-field full"><label class="form-label">Treatment</label><select class="form-select" name="treatmentId" required>
-        ${state.treatments.map(t => `<option value="${t.id}" ${t.id===a.treatmentId?'selected':''}>${escape(t.name)} — ${PHP(t.price)}</option>`).join('')}
+        ${state.treatments.map(t => `<option value="${escape(t.id)}" ${t.id===a.treatmentId?'selected':''}>${escape(t.name)} — ${PHP(t.price)}</option>`).join('')}
       </select></div>
       <div class="form-field"><label class="form-label">Date</label><input class="form-input" type="date" name="date" required value="${escape(a.date)}"></div>
       <div class="form-field"><label class="form-label">Time</label><input class="form-input" type="time" name="time" required value="${escape(a.time)}"></div>

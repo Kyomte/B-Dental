@@ -1,6 +1,6 @@
 import { query } from '../../lib/db.js';
 import { requireAuth, readJson } from '../../lib/auth.js';
-import { RESOURCES, rowToObj } from '../../lib/resources.js';
+import { RESOURCES, rowToObj, firstInvalidField } from '../../lib/resources.js';
 
 export default async function handler(req, res) {
   const def = RESOURCES[req.query.resource];
@@ -14,6 +14,8 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'PUT') {
       const body = readJson(req);
+      const bad = firstInvalidField(body, def);
+      if (bad) return res.status(400).json({ error: `invalid ${bad}` });
       const jsKeys = Object.keys(def.cols);
       const setClause = jsKeys.map((k, i) => `${def.cols[k]} = $${i + 1}`).join(', ');
       const values = [...jsKeys.map((k) => body[k] ?? null), id, clinicId];
