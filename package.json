@@ -6,7 +6,13 @@
   "scripts": {
     "build": "node build.js",
     "dev": "vercel dev",
-    "db:setup": "node scripts/db-setup.js"
+    "db:setup": "node scripts/db-setup.js",
+    "db:migrate": "node scripts/migrate.js",
+    "db:migrate:status": "node scripts/migrate.js status",
+    "test": "node --experimental-test-module-mocks --test 'test/unit/*.test.js' 'test/api/*.test.js'",
+    "test:unit": "node --test 'test/unit/*.test.js'",
+    "test:api": "node --experimental-test-module-mocks --test 'test/api/*.test.js'",
+    "test:smoke": "bash test/smoke.sh"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",

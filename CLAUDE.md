@@ -33,7 +33,7 @@ vercel dev                                     # serves public/ + /api on :3000
 .claude/skills/run-dental-clinic/driver.sh     # writes screenshot.png
 ```
 
-There is no test suite. Verification is the smoke script (byte-level) and the driver (headless Chrome → PNG). `.claude/` is in a global gitignore on this machine — skill files are local agent tooling, not in `origin`.
+Tests live in `test/` and run with the built-in `node:test` runner: `npm test` (unit + API), `npm run test:unit`, `npm run test:api`, and `npm run test:smoke` (the tracked frontend byte-level smoke at `test/smoke.sh`). API tests stub `lib/db.js` via Node's experimental module mocking, already wired into the test scripts. The headless-Chrome driver (`.claude/skills/...`) still produces a PNG for visual checks. `.claude/` is in a global gitignore on this machine — skill files are local agent tooling, not in `origin`.
 
 ## Architecture
 
