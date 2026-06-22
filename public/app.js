@@ -138,6 +138,24 @@ const criticalStockItems = () => state.inventory.filter(i => i.qty === 0);
 const escape = s => String(s ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const avatarAlt = id => 'alt-' + ((id.charCodeAt(id.length-1) % 4) + 1);
 
+/* ---------- VALIDATION ----------
+   Mirrors the server-side rules in lib/resources.js so demo mode (no backend)
+   and production give the same feedback. Returns an error string, or null if ok. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^[0-9+()\-.\s]{4,32}$/;
+function validatePatient(d) {
+  const first = String(d.firstName ?? '').trim();
+  const last  = String(d.lastName ?? '').trim();
+  if (!first) return 'First name is required.';
+  if (!last)  return 'Last name is required.';
+  if (first.length > 80 || last.length > 80) return 'Names must be 80 characters or fewer.';
+  if (d.email && !EMAIL_RE.test(String(d.email).trim())) return 'Please enter a valid email address.';
+  if (d.phone && !PHONE_RE.test(String(d.phone))) return 'Please enter a valid phone number.';
+  if (d.address && String(d.address).length > 200) return 'Address is too long (max 200 characters).';
+  if (d.medicalNotes && String(d.medicalNotes).length > 1000) return 'Medical notes are too long (max 1000 characters).';
+  return null;
+}
+
 /* ---------- ROUTING ---------- */
 async function setView(v) {
   // Hard gates for admin-only views. Belt-and-braces alongside hidden nav items.
@@ -960,6 +978,8 @@ function openPatientModal(id) {
   document.getElementById('patientForm').addEventListener('submit', e => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));
+    const err = validatePatient(data);
+    if (err) { toast(err, 'danger'); return; }
     if (id) { Object.assign(p, data); persist.update('patients', id, p); toast('Patient updated'); }
     else {
       const np = { id: uid('p'), createdAt: today(), ...data };
