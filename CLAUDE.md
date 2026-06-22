@@ -106,4 +106,6 @@ The demo `SEED` (in `public/app.js`) and the production seed (`lib/seed.js`) are
 
 ## Migration model
 
-There's no migrations framework. `scripts/db-setup.js` is the only DB tool: it applies `schema.sql` (all `create table if not exists` — idempotent) and then runs targeted backfill SQL for things that can't be expressed in pure DDL (e.g. promoting pre-`users` clinic credentials into a seed admin row). Re-run it whenever you pull a new version; it's safe on a current DB.
+Migrations are tracked, numbered SQL files in `migrations/` (e.g. `0001_init.sql`). `scripts/migrate.js` applies them in filename order and records each in a `schema_migrations` table with its checksum, so every migration runs exactly once and an edit to an already-applied file is rejected (add a new migration instead). The core logic lives in `lib/migrate-core.js` and is unit-tested with an in-memory `sql` fake. Each migration is written to be idempotent (`create ... if not exists`, guarded inserts) because the neon HTTP driver has no multi-statement transactions.
+
+`scripts/db-setup.js` is still the one-shot setup command: it applies `schema.sql` (the canonical, idempotent full schema) and then delegates to the migration runner. Commands: `npm run db:setup`, `npm run db:migrate`, `npm run db:migrate:status`. Re-run `db:setup` whenever you pull a new version; it's safe on a current DB. The legacy pre-`users` credential backfill now lives in `migrations/0002_backfill_legacy_admins.sql` rather than hardcoded in `db-setup.js`.
