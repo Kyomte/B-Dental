@@ -2,7 +2,7 @@
 // every account this endpoint creates has role 'staff' (the "one admin" rule).
 import { query } from '../../lib/db.js';
 import { requireAdmin, hashPassword, readJson } from '../../lib/auth.js';
-import { uid } from '../../lib/util.js';
+import { uid, isValidEmail } from '../../lib/util.js';
 
 export default async function handler(req, res) {
   const session = await requireAdmin(req, res);
@@ -26,6 +26,9 @@ export default async function handler(req, res) {
       const normEmail = String(email || '').trim().toLowerCase();
       if (!normEmail || !password || String(password).length < 8) {
         return res.status(400).json({ error: 'Email and a password of at least 8 characters are required.' });
+      }
+      if (!isValidEmail(normEmail)) {
+        return res.status(400).json({ error: 'Please enter a valid email address.' });
       }
       const userId = uid('u');
       const hash = await hashPassword(String(password));

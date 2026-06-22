@@ -1,5 +1,6 @@
 import { query } from '../../lib/db.js';
 import { verifyPassword, createToken, setSessionCookie, readJson } from '../../lib/auth.js';
+import { isValidEmail } from '../../lib/util.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method not allowed' });
@@ -7,6 +8,7 @@ export default async function handler(req, res) {
   const { email, password } = readJson(req);
   const normEmail = String(email || '').trim().toLowerCase();
   if (!normEmail || !password) return res.status(400).json({ error: 'Email and password are required.' });
+  if (!isValidEmail(normEmail)) return res.status(401).json({ error: 'Invalid email or password.' });
 
   try {
     const rows = await query(
