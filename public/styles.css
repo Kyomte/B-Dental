@@ -951,6 +951,36 @@ a { color: inherit; text-decoration: none; }
   from { transform: translateX(20px); opacity: 0; }
   to   { transform: translateX(0); opacity: 1; }
 }
+/* Actionable (retry) toast: message + Retry button + dismiss, persists until acted on. */
+.toast-actionable {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toast-actionable .toast-msg { flex: 1; }
+.toast-action {
+  flex-shrink: 0;
+  background: var(--neg);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.toast-action:hover { filter: brightness(1.08); }
+.toast-dismiss {
+  flex-shrink: 0;
+  background: transparent;
+  color: rgba(255,255,255,0.6);
+  border: none;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+.toast-dismiss:hover { color: white; }
 
 /* ============ Empty state ============ */
 .empty {

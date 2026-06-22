@@ -105,16 +105,25 @@ async function api(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
-function persistError(err) {
-  if (err && err.message === 'unauthorized') return;
-  toast('Could not save to server: ' + (err?.message || 'unknown error'), 'danger');
+// A failed write surfaces a toast with a Retry action that re-fires the exact
+// same request. `retry` is a closure that returns the api() promise again, so
+// retrying re-runs persistError on a fresh failure (the button stays usable
+// until it succeeds). 401s are swallowed — those bounce to the login screen.
+function persistError(retry) {
+  return (err) => {
+    if (err && err.message === 'unauthorized') return;
+    const msg = 'Could not save to server: ' + (err?.message || 'unknown error');
+    toast(msg, 'danger', retry ? { label: 'Retry', onClick: () => retry().catch(persistError(retry)) } : null);
+  };
 }
 
+// Each helper builds its own retry closure so the toast's Retry button can
+// replay the identical request without the caller having to track it.
 const persist = {
-  create:  (resource, obj)     => DEMO ? saveLocal() : api('POST',   '/' + resource, obj).catch(persistError),
-  update:  (resource, id, obj) => DEMO ? saveLocal() : api('PUT',    '/' + resource + '/' + id, obj).catch(persistError),
-  remove:  (resource, id)      => DEMO ? saveLocal() : api('DELETE', '/' + resource + '/' + id).catch(persistError),
-  restock: (payload)           => DEMO ? saveLocal() : api('POST',   '/restock', payload).catch(persistError),
+  create:  (resource, obj)     => { if (DEMO) return saveLocal(); const go = () => api('POST',   '/' + resource, obj);              return go().catch(persistError(go)); },
+  update:  (resource, id, obj) => { if (DEMO) return saveLocal(); const go = () => api('PUT',    '/' + resource + '/' + id, obj);  return go().catch(persistError(go)); },
+  remove:  (resource, id)      => { if (DEMO) return saveLocal(); const go = () => api('DELETE', '/' + resource + '/' + id);       return go().catch(persistError(go)); },
+  restock: (payload)           => { if (DEMO) return saveLocal(); const go = () => api('POST',   '/restock', payload);             return go().catch(persistError(go)); },
 };
 
 /* ---------- HELPERS ---------- */
@@ -173,8 +182,9 @@ async function setView(v) {
   })[v] || '';
   // Lazy-load the user list when the admin opens Accounts; pulls fresh each time.
   if (v === 'accounts' && !DEMO) {
+    const loadUsers = () => api('GET', '/users').then((u) => { viewState.users = u; render(); });
     try { viewState.users = await api('GET', '/users'); }
-    catch (err) { viewState.users = []; persistError(err); }
+    catch (err) { viewState.users = []; persistError(loadUsers)(err); }
   }
   render();
 }
@@ -260,14 +270,40 @@ document.getElementById('modalRoot').addEventListener('click', e => {
   if (e.target.dataset.close !== undefined || e.target.id === 'modalRoot') closeModal();
 });
 
-/* ---------- TOAST ---------- */
-function toast(msg, kind='') {
+/* ---------- TOAST ----------
+   `action` (optional): { label, onClick }. When present the toast stays until
+   dismissed or the action is taken — used by persistError() for Retry. */
+function toast(msg, kind='', action=null) {
   const host = document.getElementById('toastHost');
   const el = document.createElement('div');
   el.className = 'toast ' + kind;
-  el.textContent = msg;
+  const text = document.createElement('span');
+  text.className = 'toast-msg';
+  text.textContent = msg;
+  el.appendChild(text);
+
+  if (action) {
+    el.classList.add('toast-actionable');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toast-action';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { el.remove(); action.onClick(); });
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'toast-dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss');
+    dismiss.textContent = '✕';
+    dismiss.addEventListener('click', () => el.remove());
+    el.appendChild(btn);
+    el.appendChild(dismiss);
+    // Actionable error toasts persist (no auto-dismiss) so the retry path
+    // isn't lost; the user closes it explicitly or via the action.
+  } else {
+    setTimeout(() => el.remove(), 3500);
+  }
+
   host.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
 }
 
 /* =========================================================
@@ -1294,15 +1330,17 @@ function renderAuth(mode) {
 async function afterLogin(user, clinic) {
   session = { user, clinic };
   hideAuth();
+  const loadBootstrap = () => api('GET', '/bootstrap').then((s) => {
+    state = s;
+    decorateForSession();
+    applyRolePermissions();
+    setView('dashboard');
+  });
   try {
-    state = await api('GET', '/bootstrap');
+    await loadBootstrap();
   } catch (err) {
-    persistError(err);
-    return;
+    persistError(loadBootstrap)(err);
   }
-  decorateForSession();
-  applyRolePermissions();
-  setView('dashboard');
 }
 
 function decorateForSession() {
